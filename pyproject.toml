@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "daybot"
+version = "0.1.0"
+description = "Broker-neutral intraday stock/ETF trading bot: prove an edge in backtests before risking money"
+requires-python = ">=3.11"
+dependencies = [
+    "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+daybot = "daybot.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["daybot*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: backtests over many synthetic sessions; run with -m 'not slow' to skip",
+]
