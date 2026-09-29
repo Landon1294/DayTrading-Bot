@@ -94,15 +94,21 @@ class TestDailyLoss:
 
 
 class TestPatternDayTrader:
-    def test_fourth_day_trade_blocked_under_threshold(self):
+    def test_off_by_default_since_finra_retired_it(self):
         m = rm()
+        for _ in range(3):
+            m.record_trade(trade(1.0))
+        assert m.check_entry(LONG, 100.0, NOON, equity=10_000).ok
+
+    def test_fourth_day_trade_blocked_under_threshold(self):
+        m = rm(pdt_equity_threshold=25_000)
         for _ in range(3):
             m.record_trade(trade(1.0))
         d = m.check_entry(LONG, 100.0, NOON, equity=10_000)
         assert not d.ok and "pattern-day-trader" in d.reason
 
     def test_not_applied_above_threshold_or_when_disabled(self):
-        m = rm()
+        m = rm(pdt_equity_threshold=25_000)
         for _ in range(3):
             m.record_trade(trade(1.0))
         assert m.check_entry(LONG, 100.0, NOON, equity=30_000).ok

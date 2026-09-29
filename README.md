@@ -139,7 +139,7 @@ there by a parameter.
 | risk per trade | $25 to the stop |
 | daily loss stop | $100 (account day P&L; gains elsewhere never loosen it) |
 | trades per day | 4 |
-| pattern-day-trader | 3 day trades per rolling window under $25k equity |
+| pattern-day-trader | off: FINRA retired the rule on 2026-06-04; set `pdt_equity_threshold` for a broker that still enforces it |
 | no new entries | last 30 minutes |
 | forced flat | last 5 minutes |
 | shorting | off |

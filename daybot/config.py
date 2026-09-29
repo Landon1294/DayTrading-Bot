@@ -18,12 +18,14 @@ class RiskSettings:
     # restarted process cannot start the day with a fresh budget.
     max_daily_loss: float = 100.0
     max_trades_per_day: int = 4
-    # FINRA pattern-day-trader rule: under the equity threshold a margin
-    # account may make at most 3 day trades in 5 business days. FINRA has
-    # proposed changing this rule; if it has changed for your account, set
-    # the threshold to 0 to disable the check -- do not just raise the count.
+    # The old FINRA pattern-day-trader rule: under the equity threshold a
+    # margin account could make at most 3 day trades in 5 business days.
+    # FINRA retired it on 2026-06-04 (Regulatory Notice 26-10) and Alpaca
+    # removed it that day, so the check is off (threshold 0). Firms have until
+    # 2027-10-20 to implement the change: for a broker that still enforces it,
+    # set the threshold to 25_000 -- do not just raise the count.
     max_day_trades_per_5d: int = 3
-    pdt_equity_threshold: float = 25_000.0
+    pdt_equity_threshold: float = 0.0
     # No new positions this close to the bell: a fill in the last minutes
     # leaves no time for the trade to work before the forced flatten.
     no_entry_minutes_before_close: int = 30
