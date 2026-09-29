@@ -340,3 +340,34 @@ def test_day_trade_count_survives_a_restart(tmp_path):
     t = trader(b, journal=Journal(path), risk=replace(RISK, pdt_equity_threshold=25_000))
     t.step(BARS, NOON)
     assert b.submitted == [] and any("pattern-day-trader" in s for s in t.said)
+
+
+def test_live_trader_enters_where_the_backtest_does():
+    # The live loop and the backtester share the strategy and the risk gate,
+    # but not the loop that drives them. Replayed bar by bar, a dry-run
+    # trader must propose at the moment the backtest enters: the close of
+    # the signal bar, which is the next bar's open.
+    from daybot.backtest import run_backtest
+    from daybot.costs import CostModel
+    from daybot.strategy import make_strategy
+    from daybot.synthetic import generate_sessions
+
+    risk = RiskSettings(pdt_equity_threshold=0, allow_short=True)
+    entries = 0
+    for day, bars in generate_sessions(30, momentum=0.2, seed=3).items():
+        b = FakeBroker()
+        b.close_at = et(day, 16, 0)
+        t = trader(b, strategy=make_strategy("orb", allow_short=True), dry_run=True, risk=risk)
+        proposed, now = [], [None]
+        t.journal.log = lambda ev, **f: proposed.append((now[0], f["plan"][:3])) \
+            if ev == "proposal" else None
+        bar_len = bars[1].start - bars[0].start
+        for i in range(len(bars)):
+            now[0] = bars[i].start + bar_len
+            t.step(bars[: i + 1], now[0])
+        bt = run_backtest({day: bars}, make_strategy("orb", allow_short=True), risk=risk,
+                          costs=CostModel(), apply_pdt=False)
+        assert proposed == [(tr.entry_time, "BUY" if tr.side.value == "long" else "SEL")
+                            for tr in bt.trades]
+        entries += len(bt.trades)
+    assert entries >= 15
