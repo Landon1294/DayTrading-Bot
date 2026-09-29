@@ -28,8 +28,11 @@ single flag can point a paper setup at real money.
 
 ## The workflow, in order
 
-**1. Get data.** `daybot fetch --symbol SPY --start 2023-01-01 --out data/spy.csv`
-downloads 5-minute bars. Any CSV with `timestamp,open,high,low,close,volume`
+**1. Get data.** `daybot fetch --symbol SPY --start 2019-01-01 --feed sip --out data/spy.csv`
+downloads 5-minute bars, cut to the exchange calendar (half days end at
+13:00). The `sip` feed is every exchange and is free for history older than
+15 minutes; the default `iex` is one exchange, with a small slice of the
+volume and gaps where it saw no trade. Any CSV with `timestamp,open,high,low,close,volume`
 (zone-aware timestamps) also works; see `daybot/data.py`.
 
 **2. Backtest against a baseline.**
@@ -66,6 +69,26 @@ daybot run --symbol SPY --strategy orb             # paper orders, you approve e
 **5. Live.** Only after the strategy has an edge on held-out days *and* has
 paper traded long enough to compare fills with the backtest. It needs
 `--live --enable-live-orders`, live keys, and typing `LIVE` at a prompt.
+
+## Results so far
+
+On 2026-09-29, with SIP 5-minute bars from 2019-01-02 to 2026-09-28 (1,945
+days each), default costs, and `--equity 100000`, nothing has an edge.
+Each row chose among 18 combinations on 389 validation days and was tested
+on the following 389 days:
+
+| symbol | strategy | chosen on validation | test t | test net |
+|---|---|---|---|---|
+| SPY | orb  | range 15, target 2R, shorts | -0.53 | -$54 |
+| QQQ | orb  | range 30, target 1R, shorts |  0.86 | +$111 |
+| IWM | orb  | range 30, target 1R, long only |  0.79 | +$133 |
+| SPY | vwap | band 0.4%, stop 2x, warmup 30 | -0.07 | -$7 |
+| QQQ | vwap | band 0.4%, stop 1x, warmup 60 | -0.66 | -$80 |
+| IWM | vwap | band 0.4%, stop 2x, warmup 60 | -0.85 | -$132 |
+
+No validation t reached 1 either. Costs took 55% to over 100% of the gross.
+Grids: orb `range_minutes=15,30,60 target_r=1,2,3 allow_short=false,true`;
+vwap `band=0.002,0.004,0.008 stop_mult=0.5,1,2 warmup_minutes=30,60`.
 
 ## What counts as an edge
 

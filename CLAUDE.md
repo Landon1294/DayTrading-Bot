@@ -70,12 +70,15 @@ survives a restart.
 - Alpaca client and live loop: tested against an in-memory broker that
   mimics the recorded paper behaviour, and over the recorded payloads.
   Orders have been placed by hand on paper; **`daybot run` has not.**
-- No strategy has been tested on real market data yet.
+- ORB and VWAP reversion swept on SPY, QQQ, IWM (SIP, 2019 to 2026-09):
+  no edge, best held-out t = 0.86. See README "Results so far".
 
 ## Next steps, in order
 
-1. `daybot fetch` two or more years of SPY (and a few liquid ETFs) at 5 minutes.
-2. `daybot sweep` each strategy. Expect no edge; believe it if that's the result.
+1. Neither strategy goes to paper trading. A new hypothesis gets a sweep
+   first, on the same data and split, and is judged the same way.
+2. During market hours, `daybot run --dry-run` to see the live loop run
+   against real bars and clock without sending orders.
 3. Only if something clears t >= 3 on test: paper trade it with `daybot run`,
    and compare real fills with the backtest's assumed slippage.
 4. On paper, check how bracket legs behave when an entry partly fills.
