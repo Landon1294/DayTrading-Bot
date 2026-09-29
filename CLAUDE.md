@@ -21,11 +21,14 @@ A renamed field that reads as zero fails silently: on Kalshi, every position
 parsed as flat and the exposure limits were dead. Alpaca sends money and
 quantities as JSON strings.
 
-**Nothing about the Alpaca API is verified against a live response yet.**
-`tests/fixtures/alpaca_doc_examples.json` is built from the docs. With paper
-keys, run `daybot record` and write tests over the recorded payload before
-trusting the parsers. `daytrade_count` is not in the current spec: treat it
-as unknown, never as zero.
+**Positions and orders are not yet verified against a live response.**
+`tests/fixtures/alpaca_recorded.json` (from `daybot record` on paper,
+2026-09-29) covers account, clock and bars; its positions and orders were
+empty. `tests/fixtures/alpaca_doc_examples.json` is built from the docs and
+is all the order and position parsers have been checked against.
+`daytrade_count` is absent from the live account payload: treat it as
+unknown, never as zero. Alpaca bars are start-labelled (checked on paper by
+rebuilding 5Min bars from 1Min bars). IEX bars skip minutes with no trades.
 
 **No lookahead.** A strategy sees closed bars only. Its orders fill at the
 next bar's open. Bars are labelled on their *start* time. If a stop and a
@@ -57,14 +60,16 @@ survives a restart.
 ## Status
 
 - Backtester, risk gate, strategies, stats: done and tested.
-- Alpaca client and live loop: written and tested against an in-memory broker
-  and the documented examples. **Not run against Alpaca yet: no keys.**
+- Alpaca client and live loop: tested against an in-memory broker and the
+  documented examples. Paper keys work: `daybot check` and `daybot record`
+  ran; account, clock and bar parsers pass on the recorded payload.
+  **No order has been placed on Alpaca yet.**
 - No strategy has been tested on real market data yet.
 
 ## Next steps, in order
 
-1. Add paper keys as environment secrets. Run `daybot check`, then
-   `daybot record`, and add tests over the recorded payloads.
+1. Place and cancel a paper order (and hold a position) so `daybot record`
+   captures real order and position payloads; add tests over them.
 2. `daybot fetch` two or more years of SPY (and a few liquid ETFs) at 5 minutes.
 3. `daybot sweep` each strategy. Expect no edge; believe it if that's the result.
 4. Only if something clears t >= 3 on test: paper trade it with `daybot run`,

@@ -170,3 +170,64 @@ class TestClient:
         assert q1["symbols"] == ["SPY"] and q1["feed"] == ["iex"] and "page_token" not in q1
         assert q2["page_token"] == ["tok"]
         assert urlparse(t.calls[0][1]).netloc == "data.alpaca.markets"
+
+
+REC = json.loads((Path(__file__).parent / "fixtures" / "alpaca_recorded.json").read_text())
+
+
+class TestRecordedPaper:
+    """Over ``alpaca_recorded.json``: real paper-API responses from
+    ``daybot record``. Where these disagree with the doc examples, these win.
+
+    Positions and orders were empty when recorded (a fresh account), so their
+    parsers are still checked only against the docs."""
+
+    def test_account_parses_and_money_is_strings(self):
+        raw = REC["account"]
+        for key in ("equity", "last_equity", "cash", "buying_power"):
+            assert isinstance(raw[key], str), key
+        a = parse_account(raw)
+        assert (a.equity, a.last_equity, a.cash, a.buying_power) == (
+            100000.0, 100000.0, 100000.0, 400000.0)
+        assert a.status == "ACTIVE" and not a.trading_blocked and not a.account_blocked
+
+    def test_account_has_no_daytrade_count(self):
+        # The live API matches the spec: no day-trade count. If this starts
+        # failing, the field has appeared; check its meaning before using it.
+        assert "daytrade_count" not in REC["account"]
+        assert parse_account(REC["account"]).daytrade_count is None
+
+    def test_clock_timestamp_has_nanoseconds(self):
+        # The doc example has whole seconds; the API sends nine digits.
+        assert REC["clock"]["timestamp"].count(".") == 1
+        c = parse_clock(REC["clock"])
+        assert c.is_open and c.timestamp.utcoffset().total_seconds() == -4 * 3600
+        assert c.next_close.isoformat() == "2026-09-29T16:00:00-04:00"
+
+    def test_empty_lists_are_lists(self):
+        assert REC["positions"] == [] and REC["orders"] == []
+
+    def test_bars_parse_with_numeric_fields(self):
+        raw = REC["bars"]["bars"]["SPY"]
+        assert isinstance(raw[0]["v"], int) and isinstance(raw[0]["o"], float)
+        bars = [parse_bar("SPY", b) for b in raw]
+        assert bars[0].start.isoformat() == "2026-09-22T12:05:00+00:00"
+        assert (bars[0].open, bars[0].close, bars[0].volume, bars[0].trades) == (
+            774.17, 774.04, 240.0, 3)
+        assert all(b.low <= min(b.open, b.close) and b.high >= max(b.open, b.close)
+                   for b in bars)
+
+    def test_iex_premarket_bars_are_sparse_and_dropped(self):
+        # IEX sends pre-market bars and skips minutes with no trades
+        # (12:20 and 12:25 are missing). None of these is a session bar.
+        from daybot.sessions import group_sessions
+
+        bars = [parse_bar("SPY", b) for b in REC["bars"]["bars"]["SPY"]]
+        gaps = {(b.start - a.start).total_seconds() / 60 for a, b in zip(bars, bars[1:])}
+        assert gaps == {5.0, 15.0, 25.0}
+        assert group_sessions(bars, 5) == {}
+        assert REC["bars"]["next_page_token"]  # limit=5 was hit; more pages exist
+
+    def test_ids_are_scrubbed(self):
+        assert REC["account"]["id"] == "<scrubbed>"
+        assert REC["account"]["account_number"] == "<scrubbed>"
