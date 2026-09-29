@@ -1,9 +1,12 @@
 # Intraday strategy research
 
-Status: **pre-registered 2026-09-29, before any of the strategies below was
-run.** The hypotheses, rules, grids, settings and verdict rule in sections 2
-and 3 are fixed here and committed first, so the results cannot shape them.
-Section 4 is filled in afterwards.
+Status: **pre-registered 2026-09-29 (commit 96c6a4f), before any of the
+strategies below was run; results added the same day.** Sections 2 and 3 are
+unchanged since that commit. Section 4 is the result.
+
+**Verdict: none of the 15 pre-registered tests shows an edge.** The best
+held-out t at the default costs is -0.24; at the optimistic 0.5 bps it is
+0.88. Run `research/preregistered.py` to reproduce.
 
 ## 1. What the literature says
 
@@ -162,4 +165,135 @@ as a result.
 
 ## 4. Results
 
-Not yet run.
+Reproduce with `.venv/bin/python research/preregistered.py` (about 10 s on 4
+cores; full numbers in `research/results.json`).
+
+### At the default costs (the verdict)
+
+Test days are 2025-03 to 2026-09 (389 days); each trade is $100,000.
+
+| hypothesis | sym | chosen on validation | val t | test t | test gross | test costs | test net | trades |
+|---|---|---|---|---|---|---|---|---|
+| intraday_mom | SPY | window=first30, threshold=0.002 | -3.03 | -3.27 | -$271 | $10,709 | -$10,980 | 251 |
+| intraday_mom | QQQ | window=first30, threshold=0.002 | -3.24 | -2.88 | +$712 | $13,021 | -$12,309 | 305 |
+| intraday_mom | IWM | window=first30, threshold=0.002 | -3.33 | -3.29 | +$841 | $13,270 | -$12,429 | 310 |
+| noise_mom | SPY | vm=2.0, stop=band | -0.49 | -0.24 | +$3,283 | $4,523 | -$1,240 | 106 |
+| noise_mom | QQQ | vm=2.0, stop=band | 0.52 | -0.47 | +$1,807 | $5,039 | -$3,232 | 118 |
+| noise_mom | IWM | vm=2.0, stop=band_vwap | 0.23 | -1.51 | -$4,191 | $5,222 | -$9,413 | 122 |
+| orb5 | SPY | target_r=10 | -2.65 | -2.07 | +$1,879 | $16,358 | -$14,479 | 387 |
+| orb5 | QQQ | target_r=10 | -0.06 | -1.62 | -$265 | $16,342 | -$16,607 | 388 |
+| orb5 | IWM | target_r=10 | -2.88 | -1.01 | +$3,626 | $16,380 | -$12,754 | 386 |
+| vwap_trend | SPY | every=30 | -2.97 | -3.81 | -$12,025 | $47,796 | -$59,821 | 1,120 |
+| vwap_trend | QQQ | every=30 | -1.63 | -2.75 | -$6,022 | $46,530 | -$52,552 | 1,090 |
+| vwap_trend | IWM | every=30 | -2.62 | -3.32 | -$22,406 | $46,700 | -$69,106 | 1,091 |
+| gap_fade | SPY | gap=0.0025 | -0.73 | -0.44 | +$1,721 | $4,430 | -$2,709 | 121 |
+| gap_fade | QQQ | gap=0.005 | -0.13 | -0.40 | +$389 | $3,607 | -$3,219 | 97 |
+| gap_fade | IWM | gap=0.0025 | 1.16 | -0.93 | -$2,227 | $5,278 | -$7,505 | 147 |
+
+### At 0.5 bps slippage (sensitivity)
+
+Selection re-run at this cost level, so the chosen parameters can differ.
+
+| hypothesis | sym | chosen on validation | val t | test t | test net |
+|---|---|---|---|---|---|
+| intraday_mom | SPY | window=first30, threshold=0 | -0.51 | -1.17 | -$4,186 |
+| intraday_mom | QQQ | window=first30, threshold=0.002 | -1.09 | -0.75 | -$3,186 |
+| intraday_mom | IWM | window=first30, threshold=0.002 | -0.82 | -0.83 | -$3,140 |
+| noise_mom | SPY | vm=1.5, stop=band_vwap | 0.71 | -0.34 | -$2,129 |
+| noise_mom | QQQ | vm=1.0, stop=band_vwap | 1.50 | **0.88** | +$10,728 |
+| noise_mom | IWM | vm=2.0, stop=band_vwap | 0.85 | -0.93 | -$5,757 |
+| orb5 | SPY | target_r=10 | -0.81 | -0.43 | -$3,025 |
+| orb5 | QQQ | target_r=10 | 1.07 | -0.51 | -$5,168 |
+| orb5 | IWM | target_r=10 | -1.91 | -0.10 | -$1,295 |
+| vwap_trend | SPY | every=30 | 0.27 | -1.73 | -$26,331 |
+| vwap_trend | QQQ | every=30 | 0.56 | -1.07 | -$19,950 |
+| vwap_trend | IWM | every=30 | -0.63 | -1.80 | -$36,416 |
+| gap_fade | SPY | gap=0.0025 | -0.12 | 0.06 | +$358 |
+| gap_fade | QQQ | gap=0.005 | 0.23 | -0.09 | -$717 |
+| gap_fade | IWM | gap=0.0025 | 1.63 | -0.48 | -$3,861 |
+
+Nothing passes even here. The one positive t (noise_mom on QQQ, 0.88) is
+what one would expect as the best of 15 draws of noise.
+
+### Where the losses come from
+
+- **intraday_mom:** gross P&L is about zero on all three (-$271 to +$841 over
+  250-310 trades of $100,000). The strongly negative t is the costs alone:
+  there is no last-half-hour momentum left to pay them.
+- **vwap_trend:** loses *before* costs on all three, and trades about three
+  times a day.
+- **orb5:** gross is small and mixed; trading every day at about 4 bps round
+  trip cost about $16,000 per $100,000 over the 19-month test.
+- **noise_mom:** gross about +3 bps per trade on SPY (+$31 per $100,000),
+  close to the independent replication's +2.6 bps, but less than the round
+  trip cost at 2 bps.
+- **gap_fade:** small gross either way; no sign of a gap-fill tendency.
+
+### Descriptive check: do the implementations reproduce the papers?
+
+Not a test and not used for any decision: each strategy at its paper's
+settings and approximate costs, annualised Sharpe of daily P&L by calendar
+year, over all data (`research/by_year.py`). Where the samples overlap the
+papers', the effects appear; in the test period they are gone.
+
+| strategy (settings, costs) | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 |
+|---|---|---|---|---|---|---|---|---|
+| noise_mom (vm 1, band+VWAP, SPY, 0.11 bps = paper) | -0.06 | -0.06 | +2.50 | +1.61 | +1.95 | +0.88 | +0.30 | -0.89 |
+| intraday_mom (Baltussen "rest", SPY, gross) | -0.29 | +1.62 | +1.05 | +1.11 | -1.08 | -2.12 | -0.29 | -0.49 |
+| intraday_mom (Gao "first30", SPY, gross) | +0.16 | +0.80 | -1.75 | -0.44 | +0.95 | +0.15 | +0.15 | +1.15 |
+| orb5 (10R, QQQ, gross) | +0.86 | +0.02 | +1.21 | +1.18 | -0.28 | +1.12 | +0.35 | -0.51 |
+| vwap_trend (every 5, QQQ, gross) | +0.09 | -0.24 | +1.37 | +1.10 | -0.67 | +0.36 | +0.82 | -0.23 |
+| gap_fade (0.5%, SPY, gross) | -1.57 | -1.19 | -2.23 | +0.05 | -0.50 | -0.12 | +0.86 | +0.11 |
+
+The noise-area row matches both the paper (strong through 2023) and the
+independent replication (about zero in 2025-2026). The Baltussen row turns
+negative from 2023, consistent with the 0DTE-era evidence in section 1. These
+are single-year Sharpes of about 250 days each: a Sharpe of 1 in one year is
+a t of about 1.
+
+### Deviations from the sources
+
+- 5-minute bars throughout; the VWAP paper used 1-minute bars, the noise-area
+  paper 1-minute data checked every 30 minutes.
+- A reversal is flat for one bar (exit, then entry at the next open).
+- Positions are flat by 15:55, as the live bot must be; the papers exit at
+  16:00. intraday_mom therefore holds 25 of the last 30 minutes.
+- Constant $100,000 notional; the noise-area paper's best result also
+  targeted volatility and used up to 4x leverage. Leverage scales P&L and
+  costs alike and does not change t.
+
+### A bug found while running
+
+`RiskSettings.min_equity` ($500) is an account floor, not part of the
+registered protocol, and it stopped one validation combination (vwap_trend,
+every=5, QQQ and IWM at 2 bps) partway through after it had lost its
+$100,000. That combination was never the chosen one, so no verdict changed;
+the runner now sets the floor off, and the table above is from the corrected
+run. The by-year script had the same problem at its $10,000 default and
+showed zeros from 2021; it is fixed too.
+
+A separate, earlier bug affected the first ORB sweep in the README: `sweep`
+and `backtest` used the live gate's default of no shorts, so `allow_short=true`
+entries were silently refused. Fixed in 28cd441; the README table is
+corrected.
+
+### What this means
+
+Every tactic here had published evidence, and on this data the code
+reproduces most of that evidence in the years the papers covered. None of
+it survives in the last 19 months at costs this repo is willing to assume,
+and most of it does not survive at a quarter of those costs either. That is
+consistent with the literature on day-trader outcomes and on technical rules
+decaying once published.
+
+Nothing here goes to paper trading. Directions that would need new data or
+infrastructure rather than new parameters, each with its own
+pre-registration:
+
+- **Stocks in play:** Zarattini, Barbon & Aziz found the ORB edge came from
+  single stocks with abnormal opening volume, not ETFs. That needs a stock
+  universe, relative volume, and much larger spreads in the cost model.
+- **Gamma-conditioned momentum:** the one surviving signal reported for the
+  0DTE era conditions on dealer gamma, which needs options positioning data.
+- **Cheaper instruments:** futures (ES, NQ) cost less per unit of risk than
+  ETFs, but Alpaca does not offer them.

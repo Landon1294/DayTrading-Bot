@@ -79,14 +79,23 @@ on the following 389 days:
 
 | symbol | strategy | chosen on validation | test t | test net |
 |---|---|---|---|---|
-| SPY | orb  | range 15, target 2R, shorts | -0.53 | -$54 |
-| QQQ | orb  | range 30, target 1R, shorts |  0.86 | +$111 |
+| SPY | orb  | range 15, target 2R, shorts | -0.83 | -$124 |
+| QQQ | orb  | range 15, target 2R, shorts | -0.42 | -$88 |
 | IWM | orb  | range 30, target 1R, long only |  0.79 | +$133 |
 | SPY | vwap | band 0.4%, stop 2x, warmup 30 | -0.07 | -$7 |
 | QQQ | vwap | band 0.4%, stop 1x, warmup 60 | -0.66 | -$80 |
 | IWM | vwap | band 0.4%, stop 2x, warmup 60 | -0.85 | -$132 |
 
 No validation t reached 1 either. Costs took 55% to over 100% of the gross.
+(The ORB rows were first run with shorts silently refused by the risk gate;
+these are the corrected numbers.)
+
+Five more tactics from the published literature -- market intraday momentum,
+the noise-area momentum strategy, the 5-minute ORB, VWAP trend and gap fade --
+were pre-registered and tested the same way: 15 tests, no edge, best held-out
+t of -0.24 at default costs and 0.88 at a quarter of them. The code reproduces
+most of the published effects in the years the papers covered; they are gone
+in the test period. Literature, protocol and results: [docs/RESEARCH.md](docs/RESEARCH.md).
 Grids: orb `range_minutes=15,30,60 target_r=1,2,3 allow_short=false,true`;
 vwap `band=0.002,0.004,0.008 stop_mult=0.5,1,2 warmup_minutes=30,60`.
 

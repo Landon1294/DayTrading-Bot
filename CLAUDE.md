@@ -70,13 +70,17 @@ survives a restart.
 - Alpaca client and live loop: tested against an in-memory broker that
   mimics the recorded paper behaviour, and over the recorded payloads.
   Orders have been placed by hand on paper; **`daybot run` has not.**
-- ORB and VWAP reversion swept on SPY, QQQ, IWM (SIP, 2019 to 2026-09):
-  no edge, best held-out t = 0.86. See README "Results so far".
+- ORB and VWAP reversion swept on SPY, QQQ, IWM (SIP, 2019 to 2026-09): no
+  edge. Five published tactics pre-registered and tested in docs/RESEARCH.md
+  (`research/preregistered.py`): no edge in 15 tests. Nothing goes to paper.
 
 ## Next steps, in order
 
-1. Neither strategy goes to paper trading. A new hypothesis gets a sweep
-   first, on the same data and split, and is judged the same way.
+1. No strategy goes to paper trading. A new hypothesis is pre-registered in
+   docs/RESEARCH.md (rules, grid, verdict) and committed *before* it is run,
+   then judged on the same data and split. The test split has now produced 39
+   held-out results; a new idea should also be checked on data after
+   2026-09-28, which nothing has seen.
 2. During market hours, `daybot run --dry-run` to see the live loop run
    against real bars and clock without sending orders.
 3. Only if something clears t >= 3 on test: paper trade it with `daybot run`,
