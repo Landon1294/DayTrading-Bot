@@ -73,17 +73,20 @@ survives a restart.
 - ORB and VWAP reversion swept on SPY, QQQ, IWM (SIP, 2019 to 2026-09): no
   edge. Five published tactics pre-registered and tested in docs/RESEARCH.md
   (`research/preregistered.py`): no edge in 15 tests. Nothing goes to paper.
-- docs/DIRECTION.md recommends ending the intraday ETF search and, if the
-  project continues, a low-turnover trend-following rebalancer. The user has
-  not chosen yet.
+- docs/DIRECTION.md recommends ending the intraday ETF search. The user chose
+  the low-turnover trend-following rebalancer; it is pre-registered in
+  docs/TREND.md (rule, benchmarks, three stages with gates). Real money: the
+  user's decision after paper trading, and not below about $2,000.
 - FINRA retired the PDT rule on 2026-06-04 and Alpaca removed it; the gate's
   `pdt_equity_threshold` now defaults to 0 (off).
 
 ## Next steps, in order
 
-0. The user picks a direction from docs/DIRECTION.md; do not start one
-   unasked.
-1. No strategy goes to paper trading. A new hypothesis is pre-registered in
+0. Trend rebalancer, per docs/TREND.md, in order: stage 1 (the signal on
+   Kenneth French's 1926-2026 US data), stage 2 (Alpaca ETFs 2016-2026, gates
+   G1-G4), stage 3 (paper). Do not change the registered rule; a failed gate
+   stops the path.
+1. For any other new idea: no strategy goes to paper trading. A new hypothesis is pre-registered in
    docs/RESEARCH.md (rules, grid, verdict) and committed *before* it is run,
    then judged on the same data and split. The test split has now produced 39
    held-out results; a new idea should also be checked on data after
