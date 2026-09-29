@@ -28,12 +28,17 @@ class RiskManager:
     halted: bool = False
     halt_reason: str = ""
     day_trade_dates: list[date] = field(default_factory=list)
+    # Today's close. None means 16:00 ET; early closes (13:00) must be set.
+    session_close: datetime | None = None
 
-    def start_day(self, d: date, *, realized: float = 0.0) -> None:
+    def start_day(self, d: date, *, realized: float = 0.0,
+                  close: datetime | None = None) -> None:
         """Reset the per-day counters. ``realized`` seeds the day's P&L from
         an outside source (the broker's equity change) so a restart does not
-        forget losses already taken."""
+        forget losses already taken. ``close`` is the day's scheduled close
+        when it is not 16:00 ET."""
         self.day = d
+        self.session_close = close
         self.realized_today = realized
         self.trades_today = 0
         self.halted = False
@@ -141,8 +146,9 @@ class RiskManager:
         self.halted = True
         self.halt_reason = reason
 
-    @staticmethod
-    def _minutes_to_close(now: datetime) -> float:
+    def _minutes_to_close(self, now: datetime) -> float:
         et = to_eastern(now)
         close = datetime.combine(et.date(), REGULAR_CLOSE, tzinfo=EASTERN)
+        if self.session_close is not None and to_eastern(self.session_close).date() == et.date():
+            close = min(close, to_eastern(self.session_close))
         return (close - et).total_seconds() / 60.0

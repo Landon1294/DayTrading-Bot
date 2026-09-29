@@ -29,6 +29,8 @@ class FakeBroker:
         self.cancelled: set[str] = set()
         self.fill_entries = True
         self.close_failures = 0
+        self.close_at = et(DAY, 16, 0)
+        self.is_open = True
         self._ids = (f"o{i}" for i in itertools.count())
 
     def account(self):
@@ -36,7 +38,7 @@ class FakeBroker:
 
     def clock(self):
         now = et(DAY, 12, 0)
-        return Clock(now, True, now, now)
+        return Clock(now, self.is_open, et(DAY + timedelta(days=1), 9, 30), self.close_at)
 
     def position(self, symbol):
         if self.qty == 0:
@@ -250,6 +252,28 @@ def test_forced_flatten_before_the_close():
     t.step(BARS, NOON)
     t.step(BARS, et(DAY, 15, 56))
     assert b.closes == [100] and t.position is None
+
+
+def test_early_close_comes_from_the_broker_clock():
+    # 13:00 ET closes: entries stop at 12:30 and the position goes by 12:55,
+    # before the bracket's day orders expire with the session.
+    b = FakeBroker()
+    b.close_at = et(DAY, 13, 0)
+    t = trader(b)
+    t.step(BARS[:1], NOON)
+    assert t.position is not None
+    t.step(BARS[:2], et(DAY, 12, 55))
+    assert b.closes == [100] and t.position is None
+    assert t.rm.check_entry(Signal(Action.ENTER_LONG, "x", stop=99.0), 100.0, et(DAY, 12, 31),
+                            equity=50_000).reason == "too close to the close for a new entry"
+
+
+def test_unreadable_close_halts():
+    b = FakeBroker()
+    b.close_at = et(DAY + timedelta(days=1), 16, 0)  # a clock that is not about today
+    t = trader(b)
+    t.step(BARS[:1], NOON)
+    assert t.rm.halted and "close" in t.rm.halt_reason and b.submitted == []
 
 
 def test_close_retried_then_halts_with_manual_intervention():

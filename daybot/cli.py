@@ -150,13 +150,24 @@ def cmd_check(args) -> int:
 
 
 def cmd_fetch(args) -> int:
-    from daybot.data import write_bars
+    from datetime import date, timedelta
 
-    bars = _client(args).bars(args.symbol, args.start, args.end,
-                              timeframe=f"{args.bar_minutes}Min", feed=args.feed,
-                              adjustment=args.adjustment)
-    n = write_bars(args.out, bars)
-    print(f"wrote {n} {args.symbol} bars to {args.out}")
+    from daybot.data import write_bars
+    from daybot.sessions import to_eastern
+
+    c = _client(args)
+    bars = c.bars(args.symbol, args.start, args.end, timeframe=f"{args.bar_minutes}Min",
+                  feed=args.feed, adjustment=args.adjustment)
+    # Keep regular-session bars only, by the exchange calendar: a fixed
+    # 09:30-16:00 window would keep after-hours bars on 13:00 half days.
+    cal = c.calendar(args.start, args.end or date.today().isoformat())
+    bar_len = timedelta(minutes=args.bar_minutes)
+    kept = [b for b in bars if (day := cal.get(to_eastern(b.start).date()))
+            and day[0] <= b.start and b.start + bar_len <= day[1]]
+    early = sum(1 for o, cl in cal.values() if cl.hour < 16)
+    n = write_bars(args.out, kept)
+    print(f"wrote {n} {args.symbol} regular-session bars to {args.out} "
+          f"({len(bars) - n} outside regular hours dropped; {early} early closes in range)")
     return 0
 
 
@@ -187,6 +198,8 @@ def cmd_record(args) -> int:
                    f"ids scrubbed",
         "account": c._call("GET", c.trading_url, "/v2/account"),
         "clock": c._call("GET", c.trading_url, "/v2/clock"),
+        "calendar": c._call("GET", c.trading_url, "/v2/calendar",
+                            {"start": "2019-12-20", "end": "2019-12-27"}),  # has a half day
         "positions": c._call("GET", c.trading_url, "/v2/positions"),
         "orders": c._call("GET", c.trading_url, "/v2/orders",
                           {"status": "all", "limit": 20, "nested": "true"}),
@@ -276,7 +289,8 @@ def build_parser() -> argparse.ArgumentParser:
     f.add_argument("--start", required=True, help="YYYY-MM-DD")
     f.add_argument("--end", help="YYYY-MM-DD (default: now)")
     f.add_argument("--bar-minutes", type=int, default=5)
-    f.add_argument("--feed", default="iex", help="iex (free) or sip (paid plan)")
+    f.add_argument("--feed", default="iex",
+                   help="iex, or sip: all exchanges; free except the latest 15 minutes")
     f.add_argument("--adjustment", default="split", help="raw, split, dividend or all")
     f.add_argument("--out", required=True)
     f.set_defaults(func=cmd_fetch)

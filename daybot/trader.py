@@ -132,7 +132,19 @@ class Trader:
         if day != self.day:
             self.day = day
             self.strategy.reset()
-            self.rm.start_day(day)
+            # The broker's clock knows early closes (13:00 ET); without it the
+            # bot would trade to 16:00 and hold past a 13:00 close, where the
+            # bracket's day orders expire and leave the position unprotected.
+            clock = self.broker.clock()
+            close = clock.next_close if clock.is_open else None
+            known = close is not None and to_eastern(close).date() == day
+            self.rm.start_day(day, close=close if known else None)
+            self.journal.log("session", date=day.isoformat(),
+                             close=close.isoformat() if known else None)
+            if not known:
+                self.rm._halt(f"cannot read today's close from the broker clock "
+                              f"(open={clock.is_open}, next close {clock.next_close})")
+                self.say(f"HALTED: {self.rm.halt_reason}")
         acct = self.broker.account()
         # The daily loss gate reads the account's own P&L for the day, with
         # gains ignored: a loss anywhere in the account tightens the limit, a

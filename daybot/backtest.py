@@ -14,12 +14,13 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from daybot.config import RiskSettings
 from daybot.costs import CostModel
 from daybot.models import Action, Bar, Position, Side, Signal, Trade
 from daybot.risk import RiskManager
+from daybot.sessions import EARLY_CLOSE, to_eastern
 from daybot.strategy.base import Strategy
 
 
@@ -66,7 +67,7 @@ def run_backtest(
 
     for day, bars in sessions.items():
         strategy.reset()
-        rm.start_day(day)
+        rm.start_day(day, close=_early_close(bars))
         day_trades = _run_session(bars, strategy, rm, costs, equity, refusals)
         trades.extend(day_trades)
         pnl = sum(t.net for t in day_trades)
@@ -74,6 +75,14 @@ def run_backtest(
         equity += pnl
 
     return BacktestResult(trades, daily, starting_equity, refusals)
+
+
+def _early_close(bars) -> datetime | None:
+    """A session whose bars end exactly at 13:00 ET is a half day. That is
+    true of data cut to the exchange calendar (``daybot fetch`` does), and
+    half days are scheduled a year ahead, so knowing one is not lookahead."""
+    end = to_eastern(bars[-1].start + _bar_length(bars))
+    return end if end.time() == EARLY_CLOSE else None
 
 
 def _run_session(bars, strategy, rm: RiskManager, costs: CostModel, equity: float,

@@ -1,5 +1,5 @@
 {
- "_source": "recorded 2026-09-29 from the paper API, ids scrubbed",
+ "_source": "recorded 2026-09-29 from the paper API, ids scrubbed; calendar (2019-12-20..27) added 2026-09-29",
  "account": {
   "id": "<scrubbed>",
   "admin_configurations": {},
@@ -103,5 +103,47 @@
    ]
   },
   "next_page_token": "U1BZfE18MTc5MDA4MzgwMDAwMDAwMDAwMA=="
- }
+ },
+ "calendar": [
+  {
+   "close": "16:00",
+   "date": "2019-12-20",
+   "open": "09:30",
+   "session_close": "2000",
+   "session_open": "0400",
+   "settlement_date": "2019-12-24"
+  },
+  {
+   "close": "16:00",
+   "date": "2019-12-23",
+   "open": "09:30",
+   "session_close": "2000",
+   "session_open": "0400",
+   "settlement_date": "2019-12-26"
+  },
+  {
+   "close": "13:00",
+   "date": "2019-12-24",
+   "open": "09:30",
+   "session_close": "1700",
+   "session_open": "0400",
+   "settlement_date": "2019-12-27"
+  },
+  {
+   "close": "16:00",
+   "date": "2019-12-26",
+   "open": "09:30",
+   "session_close": "2000",
+   "session_open": "0400",
+   "settlement_date": "2019-12-30"
+  },
+  {
+   "close": "16:00",
+   "date": "2019-12-27",
+   "open": "09:30",
+   "session_close": "2000",
+   "session_open": "0400",
+   "settlement_date": "2019-12-31"
+  }
+ ]
 }

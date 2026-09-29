@@ -6,14 +6,16 @@ the docs; only a recorded payload catches docs that disagree with the API.
 """
 
 import json
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from daybot.alpaca import (AlpacaClient, AlpacaSchemaError, OrdersDisabled, order_body,
-                           parse_account, parse_bar, parse_clock, parse_order, parse_position)
+from daybot.alpaca import (AlpacaClient, AlpacaError, AlpacaSchemaError, OrdersDisabled,
+                           order_body, parse_account, parse_bar, parse_calendar_day,
+                           parse_clock, parse_order, parse_position)
 from daybot.broker import OrderRequest, new_client_order_id
 
 FX = json.loads((Path(__file__).parent / "fixtures" / "alpaca_doc_examples.json").read_text())
@@ -160,6 +162,20 @@ class TestClient:
         t = Recorder([(422, {"message": "order is already in filled state"})])
         AlpacaClient("k", "s", allow_orders=True, transport=t).cancel("abc")
 
+    def test_reads_wait_out_rate_limits(self):
+        slept = []
+        t = Recorder([(429, {"message": "too many requests."})] * 3 + [(200, FX["clock"])])
+        AlpacaClient("k", "s", transport=t, sleep=slept.append).clock()
+        assert len(t.calls) == 4 and slept == [1, 2, 4]
+
+    def test_writes_are_never_retried(self):
+        slept = []
+        t = Recorder([(429, {"message": "too many requests."}), (200, FX["order_bracket_filled"])])
+        c = AlpacaClient("k", "s", allow_orders=True, transport=t, sleep=slept.append)
+        with pytest.raises(AlpacaError, match="429"):
+            c.submit(OrderRequest("SPY", "buy", 1, "daybot-x"))
+        assert len(t.calls) == 1 and slept == []
+
     def test_bars_follow_page_tokens(self):
         page1 = {"bars": {"SPY": [FX["bars"]["bars"]["SPY"][0]]}, "next_page_token": "tok"}
         page2 = {"bars": {"SPY": [FX["bars"]["bars"]["SPY"][1]]}, "next_page_token": None}
@@ -227,6 +243,20 @@ class TestRecordedPaper:
         assert gaps == {5.0, 15.0, 25.0}
         assert group_sessions(bars, 5) == {}
         assert REC["bars"]["next_page_token"]  # limit=5 was hit; more pages exist
+
+    def test_calendar_has_the_half_day_and_skips_christmas(self):
+        days = dict((d, (o, c)) for d, o, c in map(parse_calendar_day, REC["calendar"]))
+        assert [d.isoformat() for d in days] == [
+            "2019-12-20", "2019-12-23", "2019-12-24", "2019-12-26", "2019-12-27"]
+        o, c = days[date(2019, 12, 24)]
+        assert (o.isoformat(), c.isoformat()) == ("2019-12-24T09:30:00-05:00",
+                                                  "2019-12-24T13:00:00-05:00")
+        assert days[date(2019, 12, 23)][1].hour == 16
+
+    def test_calendar_day_missing_close_raises(self):
+        broken = {k: v for k, v in REC["calendar"][0].items() if k != "close"}
+        with pytest.raises(AlpacaSchemaError, match="close"):
+            parse_calendar_day(broken)
 
     def test_ids_are_scrubbed(self):
         assert REC["account"]["id"] == "<scrubbed>"

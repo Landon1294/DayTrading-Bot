@@ -95,6 +95,20 @@ def test_session_that_ends_early_still_closes_out():
     assert r.trades[0].exit_reason == "session end"
 
 
+def test_half_day_flattens_before_its_1300_close():
+    bars = make_bars(pad([(100, 100, 100, 100)], n=42))  # 09:30 to 13:00
+    r = run(bars, Scripted(0, Signal(Action.ENTER_LONG, "go")))
+    t = r.trades[0]
+    assert t.exit_reason == "flatten before close"
+    assert (t.exit_time.hour, t.exit_time.minute) == (12, 55)
+
+
+def test_no_entry_in_the_last_half_hour_of_a_half_day():
+    bars = make_bars(pad([(100, 100, 100, 100)], n=42))
+    r = run(bars, Scripted(36, Signal(Action.ENTER_LONG, "go")))  # fills at 12:35
+    assert r.trades == [] and r.refusals == {"too close to the close for a new entry": 1}
+
+
 def test_strategy_exit_executes_next_open():
     bars = make_bars(pad([(100, 100, 100, 100), (100, 100, 100, 100), (100, 101, 100, 101),
                           (103, 103, 103, 103)]))

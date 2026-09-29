@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 EASTERN = ZoneInfo("America/New_York")
 REGULAR_OPEN = time(9, 30)
 REGULAR_CLOSE = time(16, 0)
+EARLY_CLOSE = time(13, 0)  # the day after Thanksgiving, Christmas Eve, ...
 
 
 def to_eastern(ts: datetime) -> datetime:

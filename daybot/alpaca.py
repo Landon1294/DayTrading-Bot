@@ -10,8 +10,8 @@ silently disables every exposure limit. Here a missing required field raises
 ``AlpacaSchemaError`` naming the field, so a rename stops the bot instead of
 quietly blinding it.
 
-Nothing is verified against a live response yet. When paper keys exist, run
-``daybot record`` and add the output to the fixtures.
+The parsers are tested against recorded paper responses in
+``tests/fixtures/alpaca_recorded*.json``. Re-record with ``daybot record``.
 """
 
 from __future__ import annotations
@@ -19,14 +19,16 @@ from __future__ import annotations
 import json
 import math
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import date, datetime, time as dtime
 from typing import Callable
 
 from daybot.broker import BrokerOrder, BrokerPosition, OrderRequest
 from daybot.models import Account, Bar, Clock
+from daybot.sessions import EASTERN
 
 PAPER_URL = "https://paper-api.alpaca.markets"
 LIVE_URL = "https://api.alpaca.markets"
@@ -145,6 +147,20 @@ def parse_order(d: dict) -> BrokerOrder:
     )
 
 
+def parse_calendar_day(d: dict) -> tuple[date, datetime, datetime]:
+    """One trading day: its date, and its regular open and close in ET."""
+    w = "calendar"
+    try:
+        day = date.fromisoformat(_req(d, "date", w))
+        opened, closed = (datetime.combine(day, dtime.fromisoformat(_req(d, k, w)), tzinfo=EASTERN)
+                          for k in ("open", "close"))
+    except ValueError as exc:
+        raise AlpacaSchemaError(f"calendar: {exc}; got {d!r}") from None
+    if not opened < closed:
+        raise AlpacaSchemaError(f"calendar: open {opened} is not before close {closed}")
+    return day, opened, closed
+
+
 def parse_bar(symbol: str, d: dict) -> Bar:
     w = "bar"
     return Bar(symbol, _ts(_req(d, "t", w)), _num(d, "o", w), _num(d, "h", w), _num(d, "l", w),
@@ -197,7 +213,7 @@ def _urllib_transport(timeout: float) -> Transport:
 class AlpacaClient:
     def __init__(self, key_id: str, secret_key: str, *, paper: bool = True,
                  allow_orders: bool = False, transport: Transport | None = None,
-                 timeout: float = 15.0):
+                 timeout: float = 15.0, sleep: Callable[[float], None] = time.sleep):
         if not key_id or not secret_key:
             raise ValueError("Alpaca key id and secret are required")
         self.paper = paper
@@ -206,6 +222,7 @@ class AlpacaClient:
         self._headers = {"APCA-API-KEY-ID": key_id, "APCA-API-SECRET-KEY": secret_key,
                          "Accept": "application/json"}
         self._send = transport or _urllib_transport(timeout)
+        self._sleep = sleep
 
     @classmethod
     def from_env(cls, *, paper: bool = True, allow_orders: bool = False, **kw) -> "AlpacaClient":
@@ -228,7 +245,16 @@ class AlpacaClient:
         if body is not None:
             data = json.dumps(body).encode()
             headers["Content-Type"] = "application/json"
-        status, raw = self._send(method, url, headers, data)
+        # The free plan allows about 200 requests a minute, which a multi-year
+        # bar fetch exceeds. Reads wait and retry on 429; writes never do, so
+        # an order is never sent twice.
+        for wait in (1, 2, 4, 8, 16, 32, 60, 60) if method == "GET" else ():
+            status, raw = self._send(method, url, headers, data)
+            if status != 429:
+                break
+            self._sleep(wait)
+        else:
+            status, raw = self._send(method, url, headers, data)
         text = raw.decode("utf-8", "replace") if raw else ""
         if status >= 400:
             raise AlpacaError(status, text, url)
@@ -252,6 +278,12 @@ class AlpacaClient:
             if e.status == 404:
                 return None
             raise
+
+    def calendar(self, start: str, end: str) -> dict[date, tuple[datetime, datetime]]:
+        """Trading days from ``start`` to ``end`` (YYYY-MM-DD), each with its
+        regular open and close. Early closes (13:00 ET) are only known here."""
+        rows = self._call("GET", self.trading_url, "/v2/calendar", {"start": start, "end": end})
+        return {day: (o, c) for day, o, c in map(parse_calendar_day, rows)}
 
     def order(self, order_id: str) -> BrokerOrder:
         return parse_order(self._call("GET", self.trading_url, f"/v2/orders/{order_id}",
