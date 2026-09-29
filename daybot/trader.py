@@ -196,7 +196,10 @@ class Trader:
         req = OrderRequest(self.symbol, side, d.qty, new_client_order_id(),
                            stop_loss=stop, take_profit=target)
         order = self.broker.submit(req)
+        # Record the legs now: once the entry fills, Alpaca's open-order listing
+        # shows the target leg without our client id and omits the held stop.
         self.our_order_ids.add(order.id)
+        self.our_order_ids.update(leg.id for leg in order.legs)
         self.entry_order_id = order.id
         self.rm.record_entry()
         self.journal.log("submitted", order_id=order.id, client_order_id=req.client_order_id,
@@ -326,8 +329,10 @@ class Trader:
 
     def _cancel_ours(self) -> None:
         """Cancel every order the bot placed for this symbol. The listing may
-        not yet show an order placed a second ago, so the ids the bot recorded
-        itself are cancelled too."""
+        not yet show an order placed a second ago, and it never identifies a
+        filled bracket's legs as ours, so the ids the bot recorded itself are
+        cancelled too. On Alpaca, cancelling a bracket's parent also cancels
+        its legs, filled parent or not."""
         ids = set(self.our_order_ids)
         for o in self.broker.open_orders():
             if o.is_ours and o.symbol == self.symbol:

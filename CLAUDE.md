@@ -21,14 +21,21 @@ A renamed field that reads as zero fails silently: on Kalshi, every position
 parsed as flat and the exposure limits were dead. Alpaca sends money and
 quantities as JSON strings.
 
-**Positions and orders are not yet verified against a live response.**
-`tests/fixtures/alpaca_recorded.json` (from `daybot record` on paper,
-2026-09-29) covers account, clock and bars; its positions and orders were
-empty. `tests/fixtures/alpaca_doc_examples.json` is built from the docs and
-is all the order and position parsers have been checked against.
-`daytrade_count` is absent from the live account payload: treat it as
-unknown, never as zero. Alpaca bars are start-labelled (checked on paper by
-rebuilding 5Min bars from 1Min bars). IEX bars skip minutes with no trades.
+**Parsers are tested against recorded paper responses** (2026-09-29):
+`tests/fixtures/alpaca_recorded.json` (account, clock, bars, from
+`daybot record`) and `alpaca_recorded_orders.json` (1-share orders: limit,
+bracket, short, cancels, closes). Re-record if the API changes. What they
+showed:
+- `daytrade_count` is absent from the account: treat it as unknown, never zero.
+- Bars are start-labelled (5Min bars rebuilt from 1Min). IEX skips minutes
+  with no trades.
+- Once a bracket's entry fills, the open-order listing shows only the target
+  leg, without our client id; the held stop is not listed. Leg ids must be
+  recorded at submit.
+- Cancelling a bracket's parent cancels its legs, filled or not.
+- Closing shares a resting leg holds is refused (403, `held_for_orders`).
+- A short's `qty` is signed. Simple orders have `order_class: ""`. A repeat
+  cancel returns 204. The listing lags a fill by at least a moment.
 
 **No lookahead.** A strategy sees closed bars only. Its orders fill at the
 next bar's open. Bars are labelled on their *start* time. If a stop and a
@@ -60,18 +67,15 @@ survives a restart.
 ## Status
 
 - Backtester, risk gate, strategies, stats: done and tested.
-- Alpaca client and live loop: tested against an in-memory broker and the
-  documented examples. Paper keys work: `daybot check` and `daybot record`
-  ran; account, clock and bar parsers pass on the recorded payload.
-  **No order has been placed on Alpaca yet.**
+- Alpaca client and live loop: tested against an in-memory broker that
+  mimics the recorded paper behaviour, and over the recorded payloads.
+  Orders have been placed by hand on paper; **`daybot run` has not.**
 - No strategy has been tested on real market data yet.
 
 ## Next steps, in order
 
-1. Place and cancel a paper order (and hold a position) so `daybot record`
-   captures real order and position payloads; add tests over them.
-2. `daybot fetch` two or more years of SPY (and a few liquid ETFs) at 5 minutes.
-3. `daybot sweep` each strategy. Expect no edge; believe it if that's the result.
-4. Only if something clears t >= 3 on test: paper trade it with `daybot run`,
+1. `daybot fetch` two or more years of SPY (and a few liquid ETFs) at 5 minutes.
+2. `daybot sweep` each strategy. Expect no edge; believe it if that's the result.
+3. Only if something clears t >= 3 on test: paper trade it with `daybot run`,
    and compare real fills with the backtest's assumed slippage.
-5. On paper, check how bracket legs behave when an entry partly fills.
+4. On paper, check how bracket legs behave when an entry partly fills.

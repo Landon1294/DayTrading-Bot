@@ -231,3 +231,106 @@ class TestRecordedPaper:
     def test_ids_are_scrubbed(self):
         assert REC["account"]["id"] == "<scrubbed>"
         assert REC["account"]["account_number"] == "<scrubbed>"
+
+
+ORD = json.loads((Path(__file__).parent / "fixtures" / "alpaca_recorded_orders.json").read_text())
+
+
+def rec(step, method=None, n=-1):
+    """The ``n``th recorded exchange of a step (the last by default)."""
+    hits = [e for e in ORD["exchanges"] if e["step"] == step
+            and (method is None or e["method"] == method)]
+    assert hits, step
+    return hits[n]
+
+
+class TestRecordedOrders:
+    """Over ``alpaca_recorded_orders.json``: 1-share paper orders placed,
+    listed, cancelled and closed, every exchange kept in order."""
+
+    def test_simple_order_class_is_empty_string(self):
+        raw = rec("limit_submit")["response"]
+        assert raw["order_class"] == "" and raw["status"] == "pending_new"
+        o = parse_order(raw)
+        assert o.order_class == "simple" and o.is_ours and o.is_open
+        assert (o.type, o.limit_price, o.qty, o.filled_qty) == ("limit", 400.0, 1.0, 0.0)
+
+    def test_cancel_is_204_even_when_repeated(self):
+        assert rec("limit_cancel")["status"] == 204
+        again = rec("limit_cancel_again")
+        assert again["status"] == 204 and again["response"] is None
+        assert parse_order(rec("limit_after_cancel")["response"]).status == "canceled"
+
+    def test_bracket_legs_are_held_and_not_tagged_ours(self):
+        o = parse_order(rec("bracket_submit")["response"])
+        assert o.order_class == "bracket" and o.is_ours
+        assert [(leg.type, leg.status) for leg in o.legs] == [("limit", "held"), ("stop", "held")]
+        assert all(leg.is_open and not leg.is_ours for leg in o.legs)
+
+    def test_filled_bracket(self):
+        o = parse_order(rec("bracket_filled")["response"])
+        assert o.status == "filled" and o.filled_shares == 1 and o.filled_avg_price == 762.69
+        assert [(leg.type, leg.status) for leg in o.legs] == [("limit", "new"), ("stop", "held")]
+        assert (o.legs[0].limit_price, o.legs[1].stop_price) == (770.41, 755.15)
+
+    def test_listing_after_fill_shows_only_the_target_leg(self):
+        # Once the parent fills, the nested listing drops it and the held
+        # stop, and lists the target leg flat with Alpaca's client id.
+        # Only the ids recorded at submit find both legs.
+        listed = [parse_order(o) for o in rec("bracket_open_listing")["response"]]
+        assert [(o.type, o.status, o.is_ours) for o in listed] == [("limit", "new", False)]
+        parent = parse_order(rec("bracket_filled")["response"])
+        assert listed[0].id == parent.legs[0].id
+
+    def test_open_parent_is_listed_with_nested_legs(self):
+        (o,) = [parse_order(x) for x in rec("unfilled_bracket_listing")["response"]]
+        assert o.is_ours and o.status == "new" and len(o.legs) == 2
+
+    def test_close_refused_while_a_leg_holds_the_shares(self):
+        e = rec("close_while_legs_rest")
+        assert e["status"] == 403
+        assert (e["response"]["held_for_orders"], e["response"]["available"]) == ("1", "0")
+        # Right after cancelling both legs, the close went through first time.
+        assert rec("close_right_after_cancel")["status"] == 200
+
+    def test_cancelling_a_filled_parent_cancels_its_legs(self):
+        assert rec("filled_bracket_cancel_parent")["status"] == 204
+        o = parse_order(rec("filled_bracket_after")["response"])
+        assert o.status == "filled"
+        assert [leg.status for leg in o.legs] == ["canceled", "canceled"]
+
+    def test_cancelling_an_unfilled_parent_cancels_its_legs(self):
+        o = parse_order(rec("unfilled_bracket_after")["response"])
+        assert o.status == "canceled"
+        assert [leg.status for leg in o.legs] == ["canceled", "canceled"]
+
+    def test_long_position(self):
+        raw = rec("bracket_positions", "GET", n=-1)["response"]
+        assert (raw["qty"], raw["side"]) == ("1", "long")
+        p = parse_position(raw)
+        assert (p.symbol, p.qty, p.avg_entry_price) == ("SPY", 1, 762.69)
+
+    def test_short_qty_is_signed(self):
+        raw = rec("short_position")["response"]
+        assert (raw["qty"], raw["side"]) == ("-1", "short")
+        p = parse_position(raw)
+        assert p.qty == -1 and p.market_value < 0
+
+    def test_close_returns_an_order_on_the_opposite_side(self):
+        o = parse_order(rec("short_close")["response"])
+        assert (o.symbol, o.side, o.qty, o.status) == ("QQQ", "buy", 1.0, "pending_new")
+        assert not o.is_ours  # Alpaca picks the client id for a position close
+
+    def test_missing_position_404_through_the_client(self):
+        e = rec("position_404")
+        assert e["response"]["code"] == 40410000
+        t = Recorder([(e["status"], e["response"])])
+        assert AlpacaClient("k", "s", transport=t).position("SPY") is None
+
+    def test_listing_lags_a_fill(self):
+        # The close read 'filled' by id, then the listing still said 'new'.
+        assert parse_order(rec("short_close_filled")["response"]).status == "filled"
+        listing = next(e for e in ORD["exchanges"]
+                       if e["step"] == "final" and e["url"].startswith("/v2/orders"))
+        (listed,) = [parse_order(o) for o in listing["response"]]
+        assert (listed.symbol, listed.side, listed.status) == ("QQQ", "buy", "new")

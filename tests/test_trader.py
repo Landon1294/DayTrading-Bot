@@ -47,16 +47,23 @@ class FakeBroker:
         return self.orders[oid]
 
     def open_orders(self):
+        # As recorded on Alpaca paper: an open parent is listed with its legs
+        # nested; once it fills, only the unheld legs are listed, on their own.
+        leg_ids = {leg.id for o in self.orders.values() for leg in o.legs}
         out = []
         for o in self.orders.values():
-            out.extend(leg for leg in o.legs if leg.is_open)
+            if o.id in leg_ids:
+                continue
             if o.is_open:
                 out.append(o)
+            else:
+                out.extend(leg for leg in o.legs if leg.is_open and leg.status != "held")
         return out
 
     def _new(self, **kw):
         oid = next(self._ids)
-        o = BrokerOrder(id=oid, client_order_id=kw.pop("client_order_id", "daybot-" + oid),
+        # Alpaca gives legs and position closes its own ids, not ours.
+        o = BrokerOrder(id=oid, client_order_id=kw.pop("client_order_id", "alpaca-" + oid),
                         symbol="TST", **kw)
         self.orders[oid] = o
         return o
@@ -88,6 +95,10 @@ class FakeBroker:
         o = self.orders.get(oid)
         if o and o.is_open:
             self.orders[oid] = replace(o, status="canceled")
+        if o and o.legs:  # Alpaca cancels a parent's legs with it, filled or not
+            for leg in o.legs:
+                self.cancel(leg.id)
+            return
         for pid, parent in self.orders.items():
             if any(leg.id == oid for leg in parent.legs):
                 legs = tuple(replace(leg, status="canceled") if leg.id == oid and leg.is_open else leg
@@ -98,6 +109,11 @@ class FakeBroker:
         if self.close_failures:
             self.close_failures -= 1
             raise RuntimeError("insufficient qty available")
+        # Alpaca refuses (403) to close shares a resting bracket leg holds.
+        held = sum(int(o.legs[0].qty) for o in self.orders.values()
+                   if o.legs and any(leg.is_open for leg in o.legs))
+        if qty > abs(self.qty) - held:
+            raise RuntimeError(f"insufficient qty available (held_for_orders {held})")
         self.closes.append(qty)
         self.qty -= qty if self.qty > 0 else -qty
         return self._new(side="sell", type="market", status="filled", qty=qty, filled_qty=qty,
@@ -211,6 +227,21 @@ def test_flatten_cancels_the_bracket_legs_first():
     legs = {leg.id for leg in b.orders[t.entry_order_id].legs}
     t.step(BARS[:2], NOON + timedelta(minutes=5))
     assert legs <= b.cancelled
+
+
+def test_legs_are_recorded_at_submit():
+    # Alpaca's listing never shows a filled bracket's legs as ours, so their
+    # ids must be known before anything else can go wrong.
+    b = FakeBroker()
+    t = trader(b)
+
+    def lost(oid):
+        raise ConnectionError("network down")
+    b.order = lost
+    with pytest.raises(ConnectionError):
+        t.step(BARS[:1], NOON)
+    (entry,) = [o for o in b.orders.values() if o.legs]
+    assert {entry.id, *(leg.id for leg in entry.legs)} <= t.our_order_ids
 
 
 def test_forced_flatten_before_the_close():

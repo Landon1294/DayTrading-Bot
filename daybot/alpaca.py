@@ -113,8 +113,8 @@ def parse_position(d: dict) -> BrokerPosition:
     side = _req(d, "side", w)
     if side not in ("long", "short"):
         raise AlpacaSchemaError(f"position: unknown side {side!r}")
-    # The docs do not say whether a short's qty is signed. Use the side field
-    # as the authority either way.
+    # Paper sends a short's qty signed ("-1"); the docs do not say so. Use the
+    # side field as the authority either way.
     signed = abs(qty) if side == "long" else -abs(qty)
     return BrokerPosition(
         symbol=_req(d, "symbol", w),
@@ -300,7 +300,8 @@ class AlpacaClient:
         try:
             self._call("DELETE", self.trading_url, f"/v2/orders/{order_id}")
         except AlpacaError as e:
-            # 422: already filled or already cancelled. Either way it is not resting.
+            # Paper returns 204 when cancelling an order already cancelled or
+            # filled; 422 may still mean the same. Either way it is not resting.
             if e.status not in (404, 422):
                 raise
 
