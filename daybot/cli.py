@@ -71,6 +71,16 @@ def _costs(args) -> CostModel:
     return CostModel(slippage_bps=args.slippage_bps)
 
 
+def _risk(args):
+    from daybot.config import RiskSettings
+
+    # A backtest measures the strategy, so its own parameters choose the
+    # direction. With the gate's live default (no shorts), a short-selling
+    # parameter was silently refused and a sweep reported long-only results
+    # under a "shorts" label.
+    return RiskSettings(allow_short=not args.long_only)
+
+
 def _print_summary(title: str, s: Summary) -> None:
     print(f"\n{title}")
     print(f"  days {s.days}   trades {s.trades}   win rate {s.win_rate:.1%}   "
@@ -84,7 +94,8 @@ def _print_summary(title: str, s: Summary) -> None:
 def cmd_backtest(args) -> int:
     sessions = _sessions(args)
     params = _kv(args.param)
-    kw = dict(costs=_costs(args), starting_equity=args.equity, apply_pdt=not args.no_pdt)
+    kw = dict(costs=_costs(args), risk=_risk(args), starting_equity=args.equity,
+              apply_pdt=not args.no_pdt)
     result = run_backtest(sessions, make_strategy(args.strategy, **params), **kw)
     s = summarize(result)
     _print_summary(f"{args.strategy} {params or ''}", s)
@@ -105,11 +116,13 @@ def cmd_sweep(args) -> int:
     if not grid:
         raise SystemExit("give at least one --grid key=v1,v2,...")
     cls = STRATEGIES[args.strategy]
-    res = sweep(sessions, cls, grid, costs=_costs(args), starting_equity=args.equity,
-                apply_pdt=not args.no_pdt)
+    res = sweep(sessions, cls, grid, costs=_costs(args), risk=_risk(args),
+                starting_equity=args.equity, apply_pdt=not args.no_pdt)
     print(f"tried {res.tried} combinations, chose {res.params} on validation days")
     _print_summary("validation (used to choose -- optimistic by construction)", res.validation)
     _print_summary("test (never seen -- the only honest estimate)", res.test)
+    if res.test_refusals:
+        print("  refused entries: " + ", ".join(f"{k} x{v}" for k, v in res.test_refusals.items()))
     print(f"\nverdict: {res.verdict}")
     if res.tried > 1 and not res.test.has_edge and res.validation.t_stat >= EDGE_T:
         print("validation cleared the bar and test did not: that is what overfitting a "
@@ -260,6 +273,8 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--slippage-bps", type=float, default=CostModel().slippage_bps)
         sp.add_argument("--no-pdt", action="store_true",
                         help="ignore the pattern-day-trader limit (research only)")
+        sp.add_argument("--long-only", action="store_true",
+                        help="refuse short entries at the risk gate, as live does by default")
 
     b = sub.add_parser("backtest", help="run one strategy against a baseline")
     data_args(b)

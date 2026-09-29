@@ -15,7 +15,7 @@ from __future__ import annotations
 import itertools
 import math
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Callable, Sequence
 
@@ -115,6 +115,7 @@ class SweepResult:
     validation: Summary
     test: Summary
     tried: int
+    test_refusals: dict = field(default_factory=dict)
 
     @property
     def verdict(self) -> str:
@@ -151,5 +152,5 @@ def sweep(
         if best is None or s.t_stat > best[1].t_stat:
             best = (params, s)
     params, val_summary = best
-    test_summary = summarize(run_backtest(test, factory(**params), **backtest_kwargs))
-    return SweepResult(params, val_summary, test_summary, tried)
+    test_run = run_backtest(test, factory(**params), **backtest_kwargs)
+    return SweepResult(params, val_summary, summarize(test_run), tried, dict(test_run.refusals))

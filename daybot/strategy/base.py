@@ -15,6 +15,11 @@ class Strategy(ABC):
     def reset(self) -> None:
         """Called at the start of every session."""
 
+    def end_session(self, bars: list[Bar]) -> None:
+        """Called once a session is over, with all of its bars. A strategy
+        that needs earlier days (the previous close, a volatility history)
+        records them here; nothing it does can reach the session just ended."""
+
     @abstractmethod
     def on_bar(self, bars: list[Bar], position: Position | None) -> Signal | None:
         ...

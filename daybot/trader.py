@@ -100,6 +100,7 @@ class Trader:
         self.day = None
         self.trades: list[Trade] = []
         self._mismatches = 0
+        self._session_bars: list[Bar] = []
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -130,6 +131,8 @@ class Trader:
     def step(self, bars: list[Bar], now: datetime) -> None:
         day = to_eastern(now).date()
         if day != self.day:
+            if self._session_bars:
+                self.strategy.end_session(self._session_bars)
             self.day = day
             self.strategy.reset()
             # The broker's clock knows early closes (13:00 ET); without it the
@@ -150,6 +153,7 @@ class Trader:
         # gains ignored: a loss anywhere in the account tightens the limit, a
         # gain elsewhere never loosens it. It survives a restart for free.
         self.rm.realized_today = min(0.0, acct.equity - acct.last_equity)
+        self._session_bars = list(bars)
         if acct.trading_blocked or acct.account_blocked:
             self.rm._halt("broker reports trading blocked")
         self._reconcile(now, bars[-1].close if bars else None)

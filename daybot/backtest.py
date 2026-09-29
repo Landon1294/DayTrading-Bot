@@ -69,6 +69,7 @@ def run_backtest(
         strategy.reset()
         rm.start_day(day, close=_early_close(bars))
         day_trades = _run_session(bars, strategy, rm, costs, equity, refusals)
+        strategy.end_session(bars)
         trades.extend(day_trades)
         pnl = sum(t.net for t in day_trades)
         daily[day] = pnl

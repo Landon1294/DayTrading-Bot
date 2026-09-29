@@ -3,9 +3,12 @@ nothing is found where nothing exists, and something is found where it does."""
 
 import math
 
+from collections import OrderedDict
+
 import pytest
 
 from daybot.backtest import run_backtest
+from daybot.config import RiskSettings
 from daybot.cli import main
 from daybot.costs import CostModel
 from daybot.stats import EDGE_T, split_days, summarize, sweep, t_stat
@@ -65,13 +68,14 @@ def test_summary_accounting():
 
 @pytest.mark.slow
 @pytest.mark.parametrize("seed", [0, 1, 2])
-@pytest.mark.parametrize("name", ["orb", "vwap", "random", "buy_open"])
+@pytest.mark.parametrize("name", ["orb", "vwap", "random", "buy_open", "intraday_mom",
+                                  "noise_mom", "orb5", "vwap_trend", "gap_fade"])
 def test_null_market_shows_no_edge(name, seed):
     """THE most important test. On a driftless random walk nothing can be
     predicted, so even with zero costs no strategy may clear the bar. If this
     starts failing, find out why before trusting any other result."""
     s = summarize(run_backtest(generate_sessions(400, seed=seed), make_strategy(name),
-                               costs=FREE, apply_pdt=False))
+                               costs=FREE, risk=RiskSettings(allow_short=True), apply_pdt=False))
     assert s.t_stat < EDGE_T, f"{name} found an 'edge' in pure noise: t={s.t_stat:.2f}"
 
 
@@ -93,6 +97,45 @@ def test_known_momentum_is_detected_and_reversion_is_punished():
     vwap = summarize(run_backtest(sessions, make_strategy("vwap"), costs=FREE, apply_pdt=False))
     assert orb.t_stat >= EDGE_T
     assert vwap.t_stat < 0
+
+
+def trend_days(n, strength, seed):
+    """A random walk plus, on each day, a drift drawn once and held all day:
+    the "trend day" that intraday momentum strategies claim to catch."""
+    import math
+    import random
+    from dataclasses import replace as _replace
+
+    rng = random.Random(seed + 1)
+    out = OrderedDict()
+    for day, bars in generate_sessions(n, seed=seed).items():
+        mu = rng.gauss(0, strength)
+        k = lambda i: math.exp(mu * i / len(bars))  # noqa: E731
+        out[day] = [_replace(b, open=b.open * k(i), high=b.high * k(i + 1) if mu > 0 else b.high * k(i),
+                             low=b.low * k(i) if mu > 0 else b.low * k(i + 1), close=b.close * k(i + 1))
+                    for i, b in enumerate(bars)]
+    return out
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("name", ["vwap_trend"])
+def test_trend_strategies_find_planted_momentum(name):
+    s = summarize(run_backtest(generate_sessions(400, momentum=0.4, seed=7), make_strategy(name),
+                               costs=FREE, risk=RiskSettings(allow_short=True, max_trades_per_day=100),
+                               apply_pdt=False))
+    assert s.t_stat >= EDGE_T, f"{name} missed a planted effect: t={s.t_stat:.2f}"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("name,params", [("noise_mom", {}), ("intraday_mom", {"window": "rest"}),
+                                         ("vwap_trend", {"every": 30})])
+def test_trend_strategies_find_planted_trend_days(name, params):
+    # intraday_mom holds 25 of 390 minutes, so it sees ~6% of the drift; 1.5% a day is
+    # enough for all three.
+    s = summarize(run_backtest(trend_days(400, 0.015, seed=5), make_strategy(name, **params),
+                               costs=FREE, risk=RiskSettings(allow_short=True, max_trades_per_day=100),
+                               apply_pdt=False))
+    assert s.t_stat >= EDGE_T, f"{name} missed planted trend days: t={s.t_stat:.2f}"
 
 
 def test_cli_backtest_and_sweep_run(capsys):

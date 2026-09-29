@@ -371,3 +371,29 @@ def test_live_trader_enters_where_the_backtest_does():
                             for tr in bt.trades]
         entries += len(bt.trades)
     assert entries >= 15
+
+
+def test_live_trader_carries_history_across_days():
+    # Strategies that need the previous close get it through end_session;
+    # the live trader must hand each finished day to the strategy as the
+    # backtest does. One trader, many days: proposals must match.
+    from daybot.backtest import run_backtest
+    from daybot.costs import CostModel
+    from daybot.strategy import make_strategy
+    from daybot.synthetic import generate_sessions
+
+    risk = RiskSettings(pdt_equity_threshold=0, allow_short=True)
+    sessions = generate_sessions(60, seed=11)
+    b = FakeBroker()
+    t = trader(b, strategy=make_strategy("gap_fade", gap=0.002), dry_run=True, risk=risk)
+    proposed, now = [], [None]
+    t.journal.log = lambda ev, **f: proposed.append(now[0]) if ev == "proposal" else None
+    for day, bars in sessions.items():
+        b.close_at = et(day, 16, 0)
+        bar_len = bars[1].start - bars[0].start
+        for i in range(len(bars)):
+            now[0] = bars[i].start + bar_len
+            t.step(bars[: i + 1], now[0])
+    bt = run_backtest(sessions, make_strategy("gap_fade", gap=0.002), risk=risk,
+                      costs=CostModel(), apply_pdt=False)
+    assert proposed == [tr.entry_time for tr in bt.trades] and len(proposed) >= 20
