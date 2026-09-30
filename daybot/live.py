@@ -53,6 +53,9 @@ def run(client: AlpacaClient, trader: Trader, *, bar_minutes: int, feed: str = "
             if once:
                 return
     except KeyboardInterrupt:
-        trader.say("\ninterrupted: cancelling the bot's orders"
-                   + (" and closing its position" if flatten_on_exit else ""))
+        if trader.dry_run:
+            trader.say("\ninterrupted: dry run, so there are no orders or position to close")
+        else:
+            trader.say("\ninterrupted: cancelling the bot's orders"
+                       + (" and closing its position" if flatten_on_exit else ""))
         trader.shutdown(flatten=flatten_on_exit)

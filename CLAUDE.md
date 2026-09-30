@@ -69,7 +69,10 @@ survives a restart.
 - Backtester, risk gate, strategies, stats: done and tested.
 - Alpaca client and live loop: tested against an in-memory broker that
   mimics the recorded paper behaviour, and over the recorded payloads.
-  Orders have been placed by hand on paper; **`daybot run` has not.**
+  Orders have been placed by hand on paper; **`daybot run` has not.** It
+  has dry-run against live Alpaca bars and clock (2026-09-30, SPY orb and QQQ
+  vwap, 09:35-11:17 ET, restarted once mid-session): its one proposal (SPY
+  long at 10:05) matched the backtest on the same IEX bars and on SIP bars.
 - ORB and VWAP reversion swept on SPY, QQQ, IWM (SIP, 2019 to 2026-09): no
   edge. Five published tactics pre-registered and tested in docs/RESEARCH.md
   (`research/preregistered.py`): no edge in 15 tests. Nothing goes to paper.
@@ -91,8 +94,8 @@ survives a restart.
    then judged on the same data and split. The test split has now produced 39
    held-out results; a new idea should also be checked on data after
    2026-09-28, which nothing has seen.
-2. During market hours, `daybot run --dry-run` to see the live loop run
-   against real bars and clock without sending orders.
+2. Done: dry run on 2026-09-30 (see Status). Note for long runs from this
+   environment: background tasks are stopped after about 30 minutes.
 3. Only if something clears t >= 3 on test: paper trade it with `daybot run`,
    and compare real fills with the backtest's assumed slippage.
 4. On paper, check how bracket legs behave when an entry partly fills.

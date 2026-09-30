@@ -397,3 +397,20 @@ def test_live_trader_carries_history_across_days():
     bt = run_backtest(sessions, make_strategy("gap_fade", gap=0.002), risk=risk,
                       costs=CostModel(), apply_pdt=False)
     assert proposed == [tr.entry_time for tr in bt.trades] and len(proposed) >= 20
+
+
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_interrupt_message_matches_what_shutdown_does(dry_run):
+    # Found on the first dry run against Alpaca: Ctrl-C claimed to cancel
+    # orders and close a position that a dry run never has.
+    from daybot.live import run
+
+    class Interrupting:
+        def clock(self):
+            raise KeyboardInterrupt
+
+    b = FakeBroker()
+    t = trader(b, dry_run=dry_run)
+    run(Interrupting(), t, bar_minutes=5)
+    (msg,) = [s for s in t.said if "interrupted" in s]
+    assert ("dry run" in msg) is dry_run and ("cancelling" in msg) is (not dry_run)
