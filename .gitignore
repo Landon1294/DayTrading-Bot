@@ -7,4 +7,5 @@ venv/
 .env
 data/*.csv
 data/*.jsonl
+data/*.log
 !data/.gitkeep
